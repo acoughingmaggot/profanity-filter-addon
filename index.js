@@ -11,6 +11,29 @@ const express = require("express");
 const fetch = require("node-fetch");
 const { spawn } = require("child_process");
 
+// Many public addons (Torrentio included) sit behind Cloudflare, which
+// blocks requests that don't look like they came from a real browser —
+// cloud server IPs with no User-Agent get served an HTML challenge page
+// instead of JSON. This wrapper adds browser-like headers and gives a
+// clear error (instead of a cryptic JSON-parse crash) when that happens.
+async function fetchJson(url) {
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Accept": "application/json"
+    }
+  });
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(
+      `Upstream ${url} returned non-JSON (status ${res.status}): ${text.slice(0, 200)}`
+    );
+  }
+}
+
 // ============================================================
 // CONFIG — edit these or set as environment variables
 // ============================================================
@@ -134,7 +157,12 @@ function serializeSubtitle(format, cues) {
 // SUBTITLE FETCH + CENSOR
 // ============================================================
 async function fetchAndCensor(subtitleUrl) {
-  const res = await fetch(subtitleUrl);
+  const res = await fetch(subtitleUrl, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    }
+  });
   if (!res.ok) throw new Error(`Failed to fetch subtitle: ${res.status}`);
   const raw = await res.text();
 
@@ -239,7 +267,7 @@ app.get("/subtitles/:type/:id.json", async (req, res) => {
   try {
     const { type, id } = req.params;
     const upstreamUrl = `${config.UPSTREAM_SUBTITLE_ADDON}/subtitles/${type}/${id}.json`;
-    const upstream = await fetch(upstreamUrl).then((r) => r.json());
+    const upstream = await fetchJson(upstreamUrl);
 
     const subtitles = (upstream.subtitles || []).map((s) => ({
       ...s,
@@ -258,9 +286,9 @@ app.get("/subtitles/censor", censorRoute);
 async function getMuteRangesForId(type, id) {
   if (!config.UPSTREAM_SUBTITLE_ADDON) return [];
   try {
-    const upstream = await fetch(
+    const upstream = await fetchJson(
       `${config.UPSTREAM_SUBTITLE_ADDON}/subtitles/${type}/${id}.json`
-    ).then((r) => r.json());
+    );
 
     const first = (upstream.subtitles || [])[0];
     if (!first) return [];
@@ -279,7 +307,7 @@ app.get("/stream/:type/:id.json", async (req, res) => {
     const { type, id } = req.params;
 
     const [upstreamStreams, subtitleCues] = await Promise.all([
-      fetch(`${config.UPSTREAM_STREAM_ADDON}/stream/${type}/${id}.json`).then((r) => r.json()),
+      fetchJson(`${config.UPSTREAM_STREAM_ADDON}/stream/${type}/${id}.json`),
       getMuteRangesForId(type, id)
     ]);
 
