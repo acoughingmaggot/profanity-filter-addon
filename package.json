@@ -1,0 +1,12 @@
+{
+  "name": "profanity-filter-addon",
+  "version": "0.1.0",
+  "description": "Stremio/Nuvio addon: censors profanity in subtitles and mutes audio during profane subtitle cues.",
+  "main": "index.js",
+  "scripts": { "start": "node index.js" },
+  "dependencies": {
+    "express": "^4.19.2",
+    "node-fetch": "^2.7.0"
+  },
+  "engines": { "node": ">=18" }
+}
